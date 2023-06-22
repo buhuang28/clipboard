@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.design/x/clipboard"
+	"github.com/buhuang28/clipboard"
 )
 
 func init() {
