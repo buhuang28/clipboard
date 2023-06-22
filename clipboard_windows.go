@@ -11,14 +11,17 @@ package clipboard
 // Interacting with Clipboard on Windows:
 // https://docs.microsoft.com/zh-cn/windows/win32/dataxchg/using-the-clipboard
 
+import "C"
 import (
 	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	sc "golang.org/x/text/encoding/simplifiedchinese"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"reflect"
 	"runtime"
@@ -64,6 +67,7 @@ func readText() (buf []byte, err error) {
 // writeText writes given data to the clipboard. It is the caller's
 // responsibility for opening/closing the clipboard before calling
 // this function.
+
 func writeText(buf []byte) error {
 	r, _, err := emptyClipboard.Call()
 	if r == 0 {
@@ -100,7 +104,36 @@ func writeText(buf []byte) error {
 		gFree.Call(hMem)
 		return fmt.Errorf("failed to set text to clipboard: %w", err)
 	}
+	return nil
+}
 
+func WriteQQEdit(buf []byte) error {
+	r, _, err := emptyClipboard.Call()
+	if r == 0 {
+		return fmt.Errorf("failed to clear clipboard: %w", err)
+	}
+	if len(buf) == 0 {
+		return nil
+	}
+	gbstr, _ := sc.GB18030.NewEncoder().String(string(buf))
+	hMem, _, err := gAlloc.Call(gmemMoveable, uintptr(len(gbstr)+1))
+	if hMem == 0 {
+		return fmt.Errorf("failed to alloc global memory: %w", err)
+	}
+	p, _, err := gLock.Call(hMem)
+	if p == 0 {
+		return fmt.Errorf("failed to lock global memory: %w", err)
+	}
+	defer gUnlock.Call(hMem)
+	bs := []byte(gbstr)
+	// no return value
+	memMove.Call(p, uintptr(unsafe.Pointer(&bs[0])),
+		uintptr(len(gbstr)+1))
+	v, _, err := setClipboardData.Call(uintptr(FmtQQRichText), hMem)
+	if v == 0 {
+		gFree.Call(hMem)
+		return fmt.Errorf("failed to set text to clipboard: %w", err)
+	}
 	return nil
 }
 
@@ -217,7 +250,8 @@ func writeImage(buf []byte) error {
 
 	img, err := png.Decode(bytes.NewReader(buf))
 	if err != nil {
-		return fmt.Errorf("input bytes is not PNG encoded: %w", err)
+		img, err = jpeg.Decode(bytes.NewReader(buf))
+		//return fmt.Errorf("input bytes is not PNG encoded: %w", err)
 	}
 
 	offset := unsafe.Sizeof(bitmapV5Header{})
@@ -364,6 +398,18 @@ func write(t Format, buf []byte) (<-chan struct{}, error) {
 				closeClipboard.Call()
 				return
 			}
+		case FmtQQRichText:
+			if FmtQQRichText == -1 {
+				errch <- errors.New("未注册该FormatId")
+				closeClipboard.Call()
+				return
+			}
+			err := WriteQQEdit(buf)
+			if err != nil {
+				errch <- err
+				closeClipboard.Call()
+				return
+			}
 		case FmtText:
 			fallthrough
 		default:
@@ -396,6 +442,51 @@ func write(t Format, buf []byte) (<-chan struct{}, error) {
 		return nil, err
 	}
 	return changed, nil
+}
+
+func syncWrite(t Format, buf []byte) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	for {
+		r, _, _ := openClipboard.Call(0)
+		if r == 0 {
+			continue
+		}
+		break
+	}
+
+	// var param uintptr
+	switch t {
+	case FmtImage:
+		err := writeImage(buf)
+		if err != nil {
+			closeClipboard.Call()
+			return err
+		}
+	case FmtText:
+		fallthrough
+	case FmtQQRichText:
+		if FmtQQRichText == -1 {
+			closeClipboard.Call()
+			return errors.New("未注册该FormatId")
+		}
+		err := WriteQQEdit(buf)
+		if err != nil {
+			closeClipboard.Call()
+			return err
+		}
+	default:
+		// param = cFmtUnicodeText
+		err := writeText(buf)
+		if err != nil {
+			closeClipboard.Call()
+			return err
+		}
+	}
+	// Close the clipboard otherwise other applications cannot
+	// paste the data.
+	closeClipboard.Call()
+	return nil
 }
 
 func watch(ctx context.Context, t Format) <-chan []byte {

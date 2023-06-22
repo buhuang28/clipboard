@@ -55,6 +55,7 @@ clipboard data is changed, use the watcher API:
 */
 package clipboard // import "golang.design/x/clipboard"
 
+import "C"
 import (
 	"context"
 	"errors"
@@ -69,6 +70,15 @@ var (
 	errUnavailable = errors.New("clipboard unavailable")
 	errUnsupported = errors.New("unsupported format")
 )
+
+var (
+	FmtQQRichText Format = -1
+)
+
+func RegisterClipboardFormatA(rType string) {
+	ptr, _, _ := registerClipboardFormatA.Call(GoStr2CPtr(rType))
+	FmtQQRichText = Format(ptr)
+}
 
 // Format represents the format of clipboard data.
 type Format int
@@ -85,8 +95,8 @@ var (
 	// Due to the limitation on operating systems (such as darwin),
 	// concurrent read can even cause panic, use a global lock to
 	// guarantee one read at a time.
-	lock = sync.Mutex{}
-	initOnce sync.Once
+	lock      = new(sync.Mutex)
+	initOnce  sync.Once
 	initError error
 )
 
@@ -95,10 +105,10 @@ var (
 // target system lacks required dependency, such as libx11-dev in X11
 // environment. For example,
 //
-// 	err := clipboard.Init()
-// 	if err != nil {
-// 		panic(err)
-// 	}
+//	err := clipboard.Init()
+//	if err != nil {
+//		panic(err)
+//	}
 //
 // If Init returns an error, any subsequent Read/Write/Watch call
 // may result in an unrecoverable panic.
@@ -143,6 +153,13 @@ func Write(t Format, buf []byte) <-chan struct{} {
 		return nil
 	}
 	return changed
+}
+
+func SyncWrite(t Format, buf []byte) error {
+	lock.Lock()
+	defer lock.Unlock()
+	errChan := syncWrite(t, buf)
+	return errChan
 }
 
 // Watch returns a receive-only channel that received the clipboard data

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"image/color"
 	"image/png"
+	"log"
 	"os"
 	"reflect"
 	"runtime"
@@ -138,6 +139,27 @@ func TestClipboard(t *testing.T) {
 
 		if !reflect.DeepEqual(data, b) {
 			t.Fatalf("read data from clipbaord is inconsistent with previous written data, got: %d, want: %d", len(b), len(data))
+		}
+	})
+
+	t.Run("QQCli", func(t *testing.T) {
+		FMT_HEAD := `<QQRichEditFormat><Info version="1001"></Info>`
+		FMT_END := `</QQRichEditFormat>`
+		STR_HEAD := `<EditElement type="0"><![CDATA[`
+		STR_END := `]]></EditElement>`
+		IMG_HEAD := `<EditElement type="1" filepath="`
+		IMG_END := `" shortcut=""></EditElement>`
+
+		msg := "wahaha哈哈sadsad as XXX"
+		img := "C:\\Users\\Lin\\Pictures\\222.jpg"
+		okStr := FMT_HEAD + STR_HEAD + msg + STR_END + IMG_HEAD + img + IMG_END + FMT_END
+		log.Println(okStr)
+		clipboard.RegisterClipboardFormatA("QQ_RichEdit_Format")
+		err := clipboard.SyncWrite(clipboard.FmtQQRichText, []byte(okStr))
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println("copy success")
 		}
 	})
 }
