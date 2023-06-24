@@ -73,11 +73,22 @@ var (
 
 var (
 	FmtQQRichText Format = -1
+	HTMLFormat    Format = -1
 )
 
-func RegisterClipboardFormatA(rType string) {
-	ptr, _, _ := registerClipboardFormatA.Call(GoStr2CPtr(rType))
+const (
+	QQRICHTEXT_FORMAT = "QQ_RichEdit_Format"
+	HTML_FORMAT       = "HTML Format"
+)
+
+func RegisterQQRichTextClipboardFormat() {
+	ptr, _, _ := registerClipboardFormatA.Call(GoStr2CPtr(QQRICHTEXT_FORMAT))
 	FmtQQRichText = Format(ptr)
+}
+
+func RegisterHTMLClipboardFormat() {
+	ptr, _, _ := registerClipboardFormatA.Call(GoStr2CPtr(HTML_FORMAT))
+	HTMLFormat = Format(ptr)
 }
 
 // Format represents the format of clipboard data.

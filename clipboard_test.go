@@ -154,8 +154,20 @@ func TestClipboard(t *testing.T) {
 		img := "C:\\Users\\Lin\\Pictures\\222.jpg"
 		okStr := FMT_HEAD + STR_HEAD + msg + STR_END + IMG_HEAD + img + IMG_END + FMT_END
 		log.Println(okStr)
-		clipboard.RegisterClipboardFormatA("QQ_RichEdit_Format")
+		clipboard.RegisterQQRichTextClipboardFormat()
 		err := clipboard.SyncWrite(clipboard.FmtQQRichText, []byte(okStr))
+		if err != nil {
+			log.Println(err)
+		} else {
+			log.Println("copy success")
+		}
+	})
+
+	t.Run("HTML", func(t *testing.T) {
+		msg := "<html>\n<body><!--StartFragment-->哇哈哈😭<img src=\"https://picx.zhimg.com/v2-2417829052987524d83709e54e64080c_l.jpg?source=06d4cd63\"><!--EndFragment--></body>\n</html>"
+		log.Println(msg)
+		clipboard.RegisterHTMLClipboardFormat()
+		err := clipboard.SyncWrite(clipboard.HTMLFormat, []byte(msg))
 		if err != nil {
 			log.Println(err)
 		} else {

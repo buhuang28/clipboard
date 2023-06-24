@@ -64,9 +64,32 @@ func readText() (buf []byte, err error) {
 	return []byte(string(utf16.Decode(s))), nil
 }
 
-// writeText writes given data to the clipboard. It is the caller's
-// responsibility for opening/closing the clipboard before calling
-// this function.
+func writeHTML(buf []byte) error {
+	r, _, err := emptyClipboard.Call()
+	if r == 0 {
+		return fmt.Errorf("failed to clear clipboard: %w", err)
+	}
+	if len(buf) == 0 {
+		return nil
+	}
+	hMem, _, err := gAlloc.Call(gmemMoveable, uintptr(len(buf)))
+	if hMem == 0 {
+		return fmt.Errorf("failed to alloc global memory: %w", err)
+	}
+	p, _, err := gLock.Call(hMem)
+	if p == 0 {
+		return fmt.Errorf("failed to lock global memory: %w", err)
+	}
+	defer gUnlock.Call(hMem)
+	memMove.Call(p, uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(len(buf)))
+	v, _, err := setClipboardData.Call(uintptr(HTMLFormat), hMem)
+	if v == 0 {
+		gFree.Call(hMem)
+		return fmt.Errorf("failed to set text to clipboard: %w", err)
+	}
+	return nil
+}
 
 func writeText(buf []byte) error {
 	r, _, err := emptyClipboard.Call()
@@ -410,6 +433,18 @@ func write(t Format, buf []byte) (<-chan struct{}, error) {
 				closeClipboard.Call()
 				return
 			}
+		case HTMLFormat:
+			if FmtQQRichText == -1 {
+				errch <- errors.New("未注册该FormatId")
+				closeClipboard.Call()
+				return
+			}
+			err := writeHTML(buf)
+			if err != nil {
+				errch <- err
+				closeClipboard.Call()
+				return
+			}
 		case FmtText:
 			fallthrough
 		default:
@@ -463,14 +498,22 @@ func syncWrite(t Format, buf []byte) error {
 			closeClipboard.Call()
 			return err
 		}
-	case FmtText:
-		fallthrough
 	case FmtQQRichText:
 		if FmtQQRichText == -1 {
 			closeClipboard.Call()
 			return errors.New("未注册该FormatId")
 		}
 		err := WriteQQEdit(buf)
+		if err != nil {
+			closeClipboard.Call()
+			return err
+		}
+	case HTMLFormat:
+		if HTMLFormat == -1 {
+			closeClipboard.Call()
+			return errors.New("未注册该FormatId")
+		}
+		err := writeHTML(buf)
 		if err != nil {
 			closeClipboard.Call()
 			return err
